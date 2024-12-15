@@ -138,7 +138,7 @@ class QuadcopterController:
     def get_height(self):
         
         height=self.sim.getObjectPosition(self.drone)[2]
-        print("height: ",height)
+        # print("height: ",height)
         return height
 
     def update_angles(self, target_yaw,target_pitch,target_roll, target_height):
@@ -172,13 +172,13 @@ class QuadcopterController:
 
         yaw, pitch, roll=self.get_orientation()
             
-        print("Euler Angles: ", yaw, pitch, roll)
+        # print("Euler Angles: ", yaw, pitch, roll)
 
         roll_error = target_roll - roll
         pitch_error = target_pitch - pitch
         yaw_error = target_yaw - yaw
 
-        print("error: ",yaw_error,pitch_error,roll_error)
+        # print("error: ",yaw_error,pitch_error,roll_error)
 
         self.cumul_roll_error += roll_error
         self.cumul_pitch_error += pitch_error
@@ -216,18 +216,18 @@ class QuadcopterController:
 
         return roll_error, pitch_error, yaw_error
     
-    def interception(self,image):
+    def interception(self,result) -> tuple[float, float, float, float]:
         
-        result=self.cv.detect(image)
-        
-        self.cv.visual(image,result)
-        
+
         if len(result)==0:
-            self.find_drone()
+            
+            return self.find_drone()
         else:
             yaw, pitch, roll=self.cv.calculate_drone_angles(result,self.get_orientation())
             
-            self.update_angles(yaw, pitch, roll, self.get_height())
+            # self.update_angles(yaw, pitch, roll, self.get_height())
+            
+            return yaw, pitch, roll, self.get_height()
     
     def find_drone(self):
         # Получаем текущую высоту
@@ -241,9 +241,10 @@ class QuadcopterController:
         target_height = max(min_height, min(current_height, max_height))
         
         # Обновляем угол рыскания с небольшим поворотом
-        target_yaw = self.get_orientation()[0] + 0.1
+        target_yaw = self.get_orientation()[0] + 0.2
         
-        # Обновляем параметры дрона
-        self.update_angles(target_yaw, 0, 0, target_height)
+        return target_yaw, 0, 0, target_height
+        # # Обновляем параметры дрона
+        # self.update_angles(target_yaw, 0, 0, target_height)
         
         

@@ -3,7 +3,12 @@ import matplotlib.pyplot as plt
 import cv2
 import math
 
+import asyncio
 
+def getVisionSensorImg(sim,visionSensorHandle):
+    
+    bytes,resolution = sim.getVisionSensorImg(visionSensorHandle)
+    return bytes,resolution
 
 
 def convert_bytes_to_img(bytes: bytes, resolution: list):
@@ -48,7 +53,7 @@ class computer_vision():
         
 
     
-    def process_yolo_output(self,output, confidence_threshold=0.1, iou_threshold=0.1):
+    def process_yolo_output(self,output, confidence_threshold=0.4, iou_threshold=0.4):
         """
         Обрабатывает вывод YOLO модели.
         
@@ -125,7 +130,8 @@ class computer_vision():
             
         # Отображение изображения с рамками
         cv2.imshow("Detections", image_copy)
-        cv2.waitKey(10)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            cv2.destroyAllWindows()
     
         
     def detect(self,image):
