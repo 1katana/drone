@@ -154,7 +154,7 @@ class computer_vision():
         
         return result
     
-    def calculate_drone_angles(self, target_coords, drone_orientation):
+    def calculate_drone_angles(self, target_coords, drone_orientation,height_drone):
         """
         Calculate the yaw, pitch, and roll angles for the drone to aim the camera at the target.
 
@@ -169,8 +169,10 @@ class computer_vision():
         - pitch (degrees): Vertical rotation angle of the drone.
         - roll (degrees): Roll angle of the drone.
         """
+        yaw, pitch, roll = drone_orientation
+        
         if len(target_coords)==0:
-            return drone_orientation
+            return yaw, 0, roll,height_drone
         
         index=0
         maxSquare=0
@@ -198,10 +200,67 @@ class computer_vision():
 
         # Расчет углов рыскания и тангажа относительно изображения
         yaw_image = (x_target - x_center) * angle_per_pixel
-        pitch_image = (y_target - y_center) * angle_per_pixel
+        
+        dh = (y_target - y_center)
+        
+        
+        
+        if (pitch-0)<0.037:
+            pitch=pitch+0.025
+        else:
+            pitch=pitch-0.025
+        
 
-        # Учитываем ориентацию дрона (в частности, крен и тангаж)
-        yaw, pitch, roll = drone_orientation
-        print("цель: ",yaw_image,pitch_image)
-        # Возвращаем вычисленные углы
-        return yaw-yaw_image, pitch, roll
+        if dh<-50:
+            height_drone+=0.35
+        elif dh>50:
+            height_drone-=0.35
+
+
+        return yaw-yaw_image, pitch, roll,height_drone
+    
+    
+    def calculate_drone_target(self, result, drone_pos,drone_yaw):
+        
+        if len(result)==0:
+            return drone_pos,0
+        
+        index=0
+        maxSquare=0
+        
+        for i in range(len(result)):
+            square=result[i][-1]*result[i][-2]
+            if square>maxSquare:
+                index = i 
+                maxSquare=square
+
+        target=result[index]
+            
+        
+        # Расчет угла на пиксель
+        width, height = self.input_size
+        fov_rad = math.radians(self.fov_deg)
+        angle_per_pixel = fov_rad / (width / 2)
+
+        # Координаты цели на изображении
+        x_target, y_target = target[2:4]
+
+        # Центр изображения
+        x_center = width / 2
+        y_center = height / 2
+
+        # Расчет углов рыскания и тангажа относительно изображения
+        yaw_image = (x_target - x_center) * angle_per_pixel
+        
+        k=(-0.8*(yaw_image**2)+1)
+        
+        dh = (y_target - y_center)
+        
+
+        if dh<-30:
+            drone_pos[2]+=0.12
+        elif dh>30:
+            drone_pos[2]-=0.12
+
+
+        return drone_pos,drone_yaw-(yaw_image*k)

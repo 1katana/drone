@@ -23,7 +23,7 @@ def normalize_angle(angle):
     return angle
 
 class QuadcopterController:
-    def __init__(self, sim,cv:computer_vision):
+    def __init__(self, sim,cv:computer_vision,droneTarget=True):
         """
         Инициализация класса управления квадрокоптером.
 
@@ -31,6 +31,12 @@ class QuadcopterController:
         """
         self.sim = sim
         self.drone = sim.getObject('/drone')
+        
+        self.droneTarget= sim.getObject('/droneTarget')
+        
+        self.sim.setObjectPosition(self.droneTarget,self.sim.getObjectPosition(self.drone))
+        
+        self.sim.setObjectOrientation(self.droneTarget,[0,0,self.get_orientation()[0]])
         
         self.cv=cv
 
@@ -52,18 +58,18 @@ class QuadcopterController:
 
         # Параметры ПИД-регулятора для крена (roll)
         self.pParam_roll = -0.25
-        self.iParam_roll = 0
-        self.dParam_roll = -0.55
+        self.iParam_roll = -0.005
+        self.dParam_roll = -0.7
 
         # Параметры ПИД-регулятора для тангажа (pitch)
         self.pParam_pitch = -0.25
-        self.iParam_pitch = 0
-        self.dParam_pitch = -0.65
+        self.iParam_pitch = -0.005
+        self.dParam_pitch = -0.75
 
         # Параметры ПИД-регулятора для рыскания (yaw)
         self.pParam_yaw = 0.25
-        self.iParam_yaw = 0
-        self.dParam_yaw = 2
+        self.iParam_yaw = 0.001
+        self.dParam_yaw = 2.5
         
         
 
@@ -82,53 +88,16 @@ class QuadcopterController:
         self.cumul_yaw_error = 0.0
         self.max_thrust = 6
 
-    def stabiliz(self, target_height):
-        # Получаем линейную скорость
-        l = self.sim.getObjectVelocity(self.drone)[0]
-        # print(l)
+    def get_pos(self):
+        pos=self.sim.getObjectPosition(self.drone)
+        # print("height: ",height)
+        return pos
 
-        # Вертикальная стабилизация с использованием ПИД-регулятора
-        current_height = self.sim.getObjectPosition(self.drone)[2]
-        error = target_height - current_height
-        self.cumul_height_error += error
-        derivative_error = error - self.last_height_error
-
-        p_term = self.pParam_height * error
-        i_term = self.iParam_height * self.cumul_height_error
-        d_term = self.dParam_height * derivative_error
-
-        thrust = 5.45 + p_term + i_term + d_term + l[2] * self.vParam_height
-
-        self.last_height_error = error
-
-        # Управление горизонтальной стабилизацией
-        m = self.sim.getObjectMatrix(self.drone)
-        vx = [1, 0, 0]
-        vx = self.sim.multiplyVector(m, vx)
-        vy = [0, 1, 0]
-        vy = self.sim.multiplyVector(m, vy)
-        alphaE = (vy[2] - m[11])
-        betaE = (vx[2] - m[11])
-        alphaCorr = 0.25 * alphaE + 2.1 * (alphaE - self.last_roll_error)
-        betaCorr = -0.25 * betaE - 2.1 * (betaE - self.last_pitch_error)
-        self.last_roll_error = alphaE
-        self.last_pitch_error = betaE
-
-        # Управление вращательной стабилизацией
-        euler = self.sim.getObjectOrientation(self.drone)
-        error_euler=(euler[2] - self.last_yaw)
-        self.cumul_yaw_error+=error_euler
-        self.last_yaw_error=(error_euler-self.last_yaw_error)
-        self.last_yaw = euler[2]
-        rotCorr=-5*error_euler-2*self.last_yaw_error-0.1*self.cumul_yaw_error
-
-        # Определение скоростей двигателей
-        self.propellers[0].handle_propeller(thrust * (1 - alphaCorr + betaCorr + rotCorr))
-        self.propellers[1].handle_propeller(thrust * (1 - alphaCorr - betaCorr - rotCorr))
-        self.propellers[2].handle_propeller(thrust * (1 + alphaCorr - betaCorr + rotCorr))
-        self.propellers[3].handle_propeller(thrust * (1 + alphaCorr + betaCorr - rotCorr))
-        
-        return error,thrust
+    def control_use_target(self, target_pos,target_yaw):
+        self.sim.setObjectPosition(self.droneTarget,target_pos)
+        euler = list(self.get_orientation())
+        euler[0]=target_yaw
+        self.sim.setObjectOrientation(self.droneTarget,[0,0,target_yaw])
 
     def get_orientation(self):
         euler = self.sim.getObjectOrientation(self.drone)
@@ -172,13 +141,13 @@ class QuadcopterController:
 
         yaw, pitch, roll=self.get_orientation()
             
-        # print("Euler Angles: ", yaw, pitch, roll)
+        # print("Euler Angles: ", yaw, pitch, roll,current_height)
 
         roll_error = target_roll - roll
         pitch_error = target_pitch - pitch
         yaw_error = target_yaw - yaw
 
-        # print("error: ",yaw_error,pitch_error,roll_error)
+        # print("error: ",yaw_error,pitch_error,roll_error,error)
 
         self.cumul_roll_error += roll_error
         self.cumul_pitch_error += pitch_error
@@ -216,29 +185,79 @@ class QuadcopterController:
 
         return roll_error, pitch_error, yaw_error
     
+    def get_velicity_yaw(self):
+
+        return self.sim.getObjectVelocity(self.drone)[1][2]
+        
+        
+    def interception_use_target(self,result) -> tuple[float, float, float, float]:
+        
+
+        speed=0.1
+            
+            
+        drone_pos,yaw=self.cv.calculate_drone_target(result,self.get_pos(),self.get_orientation()[0])
+        
+        drone_pos[0] += speed * math.cos(yaw)
+        drone_pos[1] += speed * math.sin(yaw)
+        
+        
+        # self.update_angles(yaw, pitch, roll, self.get_height())
+        
+        return drone_pos,yaw
+
+    def find_drone_use_target(self):
+        # Получаем текущую высоту
+        current_height = self.get_height()
+        
+        # Устанавливаем границы высоты
+        min_height = 0.2
+        max_height = 3.0
+        
+        # Ограничиваем высоту в допустимых пределах
+        target_height = max(min_height, min(current_height, max_height))
+        
+        # Обновляем угол рыскания с небольшим поворотом
+        if self.get_velicity_yaw()>0.8:
+            target_yaw = -0.2
+        else:
+            target_yaw = 0.2
+        
+        
+        
+        return [[0, 0, target_height],  self.get_orientation()[0]+target_yaw ]
+
+    
+    
+    
     def interception(self,result) -> tuple[float, float, float, float]:
         
 
         if len(result)==0:
-            
+            self.cumul_height_error=0
+            self.cumul_pitch_error=0
+            self.cumul_roll_error=0
+            self.cumul_yaw_error=0
             return self.find_drone()
         else:
-            yaw, pitch, roll=self.cv.calculate_drone_angles(result,self.get_orientation())
+            
+            
+            yaw, pitch, roll, height=self.cv.calculate_drone_angles(result,self.get_orientation(),self.get_height())
             
             # self.update_angles(yaw, pitch, roll, self.get_height())
             
-            return yaw, pitch, roll, self.get_height()
+            return yaw, pitch, roll, height
     
     def find_drone(self):
         # Получаем текущую высоту
         current_height = self.get_height()
         
         # Устанавливаем границы высоты
-        min_height = 0.7
+        min_height = 0.1
         max_height = 3.0
         
         # Ограничиваем высоту в допустимых пределах
-        target_height = max(min_height, min(current_height, max_height))
+        target_height = max(min_height, min(current_height-0.05, max_height))
         
         # Обновляем угол рыскания с небольшим поворотом
         target_yaw = self.get_orientation()[0] + 0.2

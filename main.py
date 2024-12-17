@@ -42,14 +42,25 @@ async def image_producer(queue):
     loop = asyncio.get_running_loop()
     
     while True:
-        image = await loop.run_in_executor(executor, sensor.receive_image)
-        await queue.put(image)
-        
+        result = await loop.run_in_executor(executor, camera)
+        await queue.put(result)
+    
+    
+def camera():
+    
+    image = sensor.receive_image()
+    
+    result=cv.detect(image)
+    
+    cv.visual(image,result)
+    
+    return result
 
 async def main():
     queue = asyncio.Queue()
-    current_coord = [0, 0, 0, 0.4]
+    current_coord = [[0, 0, 0.3], drone.get_orientation()[0]]
 
+    time_not_target_start=-1
 
     # Запуск фоновой задачи для получения и обработки изображений
     producer_task = asyncio.create_task(image_producer(queue))
@@ -58,17 +69,25 @@ async def main():
         # print(f'Simulation time: {t:.2f} [s]')
 
         if not queue.empty():
-            image = await queue.get()
+            result = await queue.get()
+
             queue.task_done()
+
+            if len(result)==0:
+                
+                if time_not_target_start!=-1:
+                    if t-time_not_target_start>3:
+                        current_coord=drone.find_drone_use_target()
+                else:
+                    time_not_target_start=t
             
-            # result=cv.detect(image)
-            
-            cv.visual(image,[])
-            
-            # drone.interception(result)
-            
-    
-        drone.update_angles(*current_coord)
+            else:
+                time_not_target_start=-1
+                current_coord=drone.interception_use_target(result)
+         
+        drone.control_use_target( *current_coord)
+
+        # drone.update_angles(*current_coord)
         sim.step()  # Следующий шаг симуляции
         await asyncio.sleep(0)  # Позволяет другим задачам выполняться
 
